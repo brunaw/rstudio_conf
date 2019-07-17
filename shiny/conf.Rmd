@@ -1,0 +1,85 @@
+---
+title: "rstudio::conf"
+runtime: shiny
+output: html_document
+---
+
+
+```{r, eval = FALSE, echo = FALSE}
+# getting the data
+url <- "http://www.cvent.com/events/rstudio-conf-austin/agenda-dd6d75526f3c4554b67c4de32aeffb47.aspx"
+ 
+
+d <- httr::GET(url)
+
+time <- d %>% 
+  xml2::read_html() %>% 
+  xml2::xml_find_all("//table") %>% 
+  magrittr::extract(1:5) %>% 
+  purrr::map_dfr(rvest::html_table, .id = "dia") %>% 
+  tibble::as_tibble() %>% 
+  dplyr::select(-X3) %>% 
+  dplyr::mutate(dia = ifelse(dia == 3, 2, dia),
+                dia = ifelse(dia == 4, 3, dia),
+                dia = ifelse(dia == 5, 4, dia),
+                X1 = ifelse(dia == 1, first(X1), X1),
+                X1 = stringr::str_squish(X1)) %>% 
+  dplyr::group_by(dia, X1) %>% 
+  tidyr::nest(X2)
+
+saveRDS(time, "times.rds")
+```
+
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+times <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/Macbook/Desktop/rstudio conf/rstudio_conf/shiny/times.rds")
+
+selectInput("day", 
+            "Day",
+            c(1:4), selected = 1)
+
+selectInput("time", 
+            "Time",
+            "8:00 AM - 9:00 AM")
+
+
+D1  <- eventReactive(input$day, {
+     times %>%  
+       dplyr::filter(dia == input$day)
+})
+
+
+observeEvent(D1(),{
+  updateSelectInput(session, "time", "Time:",  
+                    choices = unique(D1()$X1),
+                    selected = unique(D1()$X1)[1])
+})
+
+```
+
+
+```{r, echo = FALSE}
+library(formattable)
+
+output$table <- renderFormattable({
+  day <- input$day
+  time <- input$time
+  
+  db <- times %>%  
+    dplyr::filter(dia == day)   %>% 
+    dplyr::filter(X1 == time) %>% 
+    dplyr::pull(data) %>% 
+    as.data.frame() %>% 
+    setNames("Talks")
+  
+  # time %>% 
+  # filter(dia == ) %>% 
+  # select_if(~sum(is.na(.)) == 0)
+  
+  formattable::formattable(db)
+
+})
+formattable::formattableOutput("table")
+```
+
